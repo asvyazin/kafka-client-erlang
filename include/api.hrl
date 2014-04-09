@@ -1,0 +1,5 @@
+-record(metadata_request, {topics}).
+-record(metadata_response, {brokers, topics}).
+-record(broker, {node_id, host, port}).
+-record(topic_metadata, {error_code, topic_name, partitions}).
+-record(partition_metadata, {error_code, partition_id, leader, replicas, isr}).

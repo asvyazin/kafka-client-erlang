@@ -1,0 +1,16 @@
+%%% -*- erlang -*-
+
+{application, kafka_client,
+ [{description, "Kafka client"},
+  {vsn, "0.0.1"},
+  {modules, []},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+
+  {env, [
+    %% default log level
+    {log_level, error},
+
+    %% list of commands modules
+    {modules, [utils, metadata, broker_connection]}
+  ]}]}.
