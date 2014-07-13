@@ -9,8 +9,5 @@
 
   {env, [
     %% default log level
-    {log_level, error},
-
-    %% list of commands modules
-    {modules, [utils, metadata, broker_connection]}
+    {log_level, error}
   ]}]}.
