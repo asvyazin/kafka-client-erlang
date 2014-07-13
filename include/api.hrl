@@ -1,3 +1,9 @@
+-record(raw_request, {api_key, api_version, correlation_id, client_id, request_bytes}).
+
+%% Metadata
+
+-define(METADATA_API_VERSION, 0).
+
 -record(metadata_request, {topics}).
 -record(metadata_response, {brokers, topics}).
 -record(broker, {node_id, host, port}).
