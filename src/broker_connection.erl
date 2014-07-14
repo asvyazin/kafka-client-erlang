@@ -36,6 +36,12 @@ handle_call({metadata, ClientId, Req}, From, State = #state{ put_mod = Put }) ->
     send_request(#raw_request{ api_key = ?METADATA_REQUEST
 			     , api_version = ?METADATA_API_VERSION
 			     , client_id = ClientId
+			     , request_bytes = ReqBytes }, From, State);
+handle_call({produce, ClientId, Req}, From, State = #state{ put_mod = Put }) ->
+    ReqBytes = put:run(Put, produce:put_request(Put, Req)),
+    send_request(#raw_request{ api_key = ?PRODUCE_REQUEST
+			     , api_version = ?PRODUCE_API_VERSION
+			     , client_id = ClientId
 			     , request_bytes = ReqBytes }, From, State).
 
 send_request(RawRequest, From, State = #state{ socket = Socket
@@ -60,5 +66,10 @@ handle_info({tcp, Socket, <<CorrelationId:32/integer-big, ResponseData/binary>>}
 connect(Address, Port) ->
     gen_tcp:connect(Address, Port, [binary, {packet, 4}, {active, once}]).
 
-deserialize_response(?METADATA_REQUEST, Get, ResponseData) ->
-    Get:eval(metadata:get_response(Get), ResponseData).
+deserialize_response(ApiKey, Get, ResponseData) ->
+    Get:eval(do_get(ApiKey, Get), ResponseData).
+
+do_get(?METADATA_REQUEST, Get) ->
+    metadata:get_response(Get);
+do_get(?PRODUCE_REQUEST, Get) ->
+    produce:get_response(Get).

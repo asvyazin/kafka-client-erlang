@@ -4,6 +4,7 @@
 
 %% Message
 
+-define(MESSAGE_MAGIC_BYTE, 0).
 -record(message, {offset, key, value}).
 
 %% Metadata
