@@ -25,7 +25,11 @@ metadata(Pid, ClientId, Req) ->
 
 init([Address, Port]) ->
     {ok, Sock} = connect(Address, Port),
-    {ok, #state{socket = Sock, current_correlation_id = 0, waiting_requests = [], put_mod = put:new(), get_mod = get:new()}}.
+    {ok, #state{ socket = Sock
+	       , current_correlation_id = 0
+	       , waiting_requests = []
+	       , put_mod = put:new()
+	       , get_mod = get:new()}}.
 
 handle_call({metadata, ClientId, Req}, From, State = #state{ socket = Socket
 							   , current_correlation_id = CurrentCorrelationId
@@ -38,14 +42,19 @@ handle_call({metadata, ClientId, Req}, From, State = #state{ socket = Socket
 			     , correlation_id = CurrentCorrelationId
 			     , client_id = ClientId
 			     , request_bytes = ReqBytes },
-    RawReqBytes = put:run(Put, raw_request:put(Put, RawRequest)),
-    gen_tcp:send(Socket, RawReqBytes),
-    {noreply, State#state{current_correlation_id = CurrentCorrelationId + 1, waiting_requests = [{CurrentCorrelationId, ReqInfo} | WaitingRequests]}}.
+    ok = send_raw_request(Put, RawRequest, Socket),
+    {noreply, State#state{ current_correlation_id = CurrentCorrelationId + 1
+			 , waiting_requests = [{CurrentCorrelationId, ReqInfo} | WaitingRequests]}}.
 
-handle_info({tcp, _Socket, <<CorrelationId:32/integer-big, ResponseData/binary>>}, State = #state{waiting_requests = Requests, get_mod = Get}) ->
+send_raw_request(Put, RawRequest, Socket) ->
+    RawReqBytes = put:run(Put, raw_request:put(Put, RawRequest)),
+    gen_tcp:send(Socket, RawReqBytes).
+
+handle_info({tcp, Socket, <<CorrelationId:32/integer-big, ResponseData/binary>>}, State = #state{waiting_requests = Requests, get_mod = Get}) ->
     #request_info{api_key = ApiKey, from = From} = proplists:get_value(CorrelationId, Requests),
     gen_server:reply(From, deserialize_response(ApiKey, Get, ResponseData)),
     NewRequests = proplists:delete(CorrelationId, Requests),
+    inet:setopts(Socket, [{active, once}]),
     {noreply, State#state{waiting_requests = NewRequests}}.
 
 %% private
