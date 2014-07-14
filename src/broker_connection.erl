@@ -31,25 +31,23 @@ init([Address, Port]) ->
 	       , put_mod = put:new()
 	       , get_mod = get:new()}}.
 
-handle_call({metadata, ClientId, Req}, From, State = #state{ socket = Socket
-							   , current_correlation_id = CurrentCorrelationId
-							   , waiting_requests = WaitingRequests
-							   , put_mod = Put}) ->
-    ReqInfo = #request_info{ api_key = ?METADATA_REQUEST, from = From },
+handle_call({metadata, ClientId, Req}, From, State = #state{ put_mod = Put }) ->
     ReqBytes = put:run(Put, metadata:put_request(Put, Req)),
-    RawRequest = #raw_request{ api_key = ?METADATA_REQUEST
+    send_request(#raw_request{ api_key = ?METADATA_REQUEST
 			     , api_version = ?METADATA_API_VERSION
-			     , correlation_id = CurrentCorrelationId
 			     , client_id = ClientId
-			     , request_bytes = ReqBytes },
-    ok = send_raw_request(Put, RawRequest, Socket),
+			     , request_bytes = ReqBytes }, From, State).
+
+send_request(RawRequest, From, State = #state{ socket = Socket
+					     , current_correlation_id = CurrentCorrelationId
+					     , waiting_requests = WaitingRequests
+					     , put_mod = Put}) ->
+    RawReqBytes = put:run(Put, raw_request:put(Put, RawRequest#raw_request{ correlation_id = CurrentCorrelationId })),
+    ok = gen_tcp:send(Socket, RawReqBytes),
+    ReqInfo = #request_info{ api_key = ?METADATA_REQUEST, from = From },
     {noreply, State#state{ current_correlation_id = CurrentCorrelationId + 1
 			 , waiting_requests = [{CurrentCorrelationId, ReqInfo} | WaitingRequests]}}.
-
-send_raw_request(Put, RawRequest, Socket) ->
-    RawReqBytes = put:run(Put, raw_request:put(Put, RawRequest)),
-    gen_tcp:send(Socket, RawReqBytes).
-
+    
 handle_info({tcp, Socket, <<CorrelationId:32/integer-big, ResponseData/binary>>}, State = #state{waiting_requests = Requests, get_mod = Get}) ->
     #request_info{api_key = ApiKey, from = From} = proplists:get_value(CorrelationId, Requests),
     gen_server:reply(From, deserialize_response(ApiKey, Get, ResponseData)),
