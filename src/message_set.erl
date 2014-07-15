@@ -1,6 +1,5 @@
 -module(message_set).
 -compile({parse_transform, do}).
--compile({parse_transform, cut}).
 
 -export([put/2]).
 

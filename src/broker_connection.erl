@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% public API
--export([start_link/2, metadata/3]).
+-export([start_link/2, metadata/3, produce/3]).
 
 -include("api_key.hrl").
 -include("api.hrl").
@@ -20,6 +20,9 @@ start_link(Address, Port) ->
 
 metadata(Pid, ClientId, Req) ->
     gen_server:call(Pid, {metadata, ClientId, Req}).
+
+produce(Pid, ClientId, Req) ->
+    gen_server:call(Pid, {produce, ClientId, Req}).
 
 %% gen_server callbacks
 
