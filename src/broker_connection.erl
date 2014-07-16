@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% public API
--export([start_link/2, metadata/3, produce/3]).
+-export([start_link/2, metadata/3, produce/3, fetch/3]).
 
 -include("api_key.hrl").
 -include("api.hrl").
@@ -23,6 +23,9 @@ metadata(Pid, ClientId, Req) ->
 
 produce(Pid, ClientId, Req) ->
     gen_server:call(Pid, {produce, ClientId, Req}).
+
+fetch(Pid, ClientId, Req) ->
+    gen_server:call(Pid, {fetch, ClientId, Req}).
 
 %% gen_server callbacks
 
@@ -44,6 +47,12 @@ handle_call({produce, ClientId, Req}, From, State = #state{ put_mod = Put }) ->
     ReqBytes = put:run(Put, produce:put_request(Put, Req)),
     send_request(#raw_request{ api_key = ?PRODUCE_REQUEST
 			     , api_version = ?PRODUCE_API_VERSION
+			     , client_id = ClientId
+			     , request_bytes = ReqBytes }, From, State);
+handle_call({fetch, ClientId, Req}, From, State = #state{ put_mod = Put }) ->
+    ReqBytes = put:run(Put, fetch:put_request(Put, Req)),
+    send_request(#raw_request{ api_key = ?FETCH_REQUEST
+			     , api_version = ?FETCH_API_VERSION
 			     , client_id = ClientId
 			     , request_bytes = ReqBytes }, From, State).
 
@@ -75,4 +84,6 @@ deserialize_response(ApiKey, Get, ResponseData) ->
 do_get(?METADATA_REQUEST, Get) ->
     metadata:get_response(Get);
 do_get(?PRODUCE_REQUEST, Get) ->
-    produce:get_response(Get).
+    produce:get_response(Get);
+do_get(?FETCH_REQUEST, Get) ->
+    fetch:get_response(Get).

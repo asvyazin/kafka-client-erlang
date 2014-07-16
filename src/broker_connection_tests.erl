@@ -19,4 +19,18 @@ metadata_test_() ->
 												  , message_set = [
 												       #message{ offset = -1
 													       , key = <<"key">>
-													       , value = <<"value">>}]}]}]}))].
+													       , value = <<"value">>}]}]}]})),
+     ?_assertMatch(#fetch_response{},
+	broker_connection:fetch(Pid, ?CLIENT_ID,
+	  #fetch_request {
+	     broker_id = -1,
+	     max_wait_time = 100,
+	     min_bytes = 1000,
+	     topics = [
+	       #fetch_request_topic {
+		  topic_name = <<"test">>,
+		  partitions = [
+                    #fetch_request_partition {
+		       partition_id = 0,
+		       fetch_offset = 0,
+		       max_bytes = 10000}]}]}))].

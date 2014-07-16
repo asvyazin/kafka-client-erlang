@@ -29,3 +29,15 @@
 -record(produce_response, {topics}).
 -record(produce_response_topic, {topic_name, partitions}).
 -record(produce_response_partition, {partition_id, error_code, offset}).
+
+%% Fetch
+
+-define(FETCH_API_VERSION, 0).
+
+-record(fetch_request, {broker_id, max_wait_time, min_bytes, topics}).
+-record(fetch_request_topic, {topic_name, partitions}).
+-record(fetch_request_partition, {partition_id, fetch_offset, max_bytes}).
+
+-record(fetch_response, {topics}).
+-record(fetch_response_topic, {topic_name, partitions}).
+-record(fetch_response_partition, {partition_id, error_code, highwater_mark_offset, message_set}).
