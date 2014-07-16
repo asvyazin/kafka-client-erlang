@@ -53,7 +53,7 @@ send_request(RawRequest, From, State = #state{ socket = Socket
 					     , put_mod = Put}) ->
     RawReqBytes = put:run(Put, raw_request:put(Put, RawRequest#raw_request{ correlation_id = CurrentCorrelationId })),
     ok = gen_tcp:send(Socket, RawReqBytes),
-    ReqInfo = #request_info{ api_key = ?METADATA_REQUEST, from = From },
+    ReqInfo = #request_info{ api_key = RawRequest#raw_request.api_key, from = From },
     {noreply, State#state{ current_correlation_id = CurrentCorrelationId + 1
 			 , waiting_requests = [{CurrentCorrelationId, ReqInfo} | WaitingRequests]}}.
     

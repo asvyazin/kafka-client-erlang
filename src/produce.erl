@@ -18,7 +18,7 @@ put_request_topic(Put, #produce_request_topic{ topic_name = TopicName, partition
 put_request_partition(Put, #produce_request_partition{ partition_id = PartitionId, message_set = MessageSet }) ->
     do([Put || put:int32_big(Put, PartitionId),
 	       MessageSetBytes = put:run(Put, message_set:put(Put, MessageSet)),
-	       put:bytes(MessageSetBytes)]).
+	       put:bytes(Put, MessageSetBytes)]).
 
 get_response(Get) ->
     do([Get || Topics <- get:array(Get, get_response_topic(Get)),
@@ -31,6 +31,6 @@ get_response_topic(Get) ->
 
 get_response_partition(Get) ->
     do([Get || PartitionId <- get:int32_big(Get),
-	       ErrorCode <- get:int16_big(Get),
+	       ErrorCode <- get:error_code(Get),
 	       Offset <- get:int64_big(Get),
 	       return(#produce_response_partition{ partition_id = PartitionId, error_code = ErrorCode, offset = Offset })]).

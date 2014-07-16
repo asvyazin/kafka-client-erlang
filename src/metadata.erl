@@ -21,13 +21,13 @@ get_broker(StateT) ->
 		  return(#broker{node_id = NodeId, host = Host, port = Port})]).
 
 get_topic_metadata(StateT) ->
-    do([StateT || ErrorCode <- get:int16_big(StateT),
+    do([StateT || ErrorCode <- get:error_code(StateT),
 		  TopicName <- get:string(StateT),
 		  Partitions <- get:array(StateT, get_partition_metadata(StateT)),
 		  return(#topic_metadata{error_code = ErrorCode, topic_name = TopicName, partitions = Partitions})]).
 
 get_partition_metadata(StateT) ->
-    do([StateT || ErrorCode <- get:int16_big(StateT),
+    do([StateT || ErrorCode <- get:error_code(StateT),
 		  PartitionId <- get:int32_big(StateT),
 		  Leader <- get:int32_big(StateT),
 		  Replicas <- get:array(StateT, get:int32_big(StateT)),
