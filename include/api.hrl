@@ -41,3 +41,15 @@
 -record(fetch_response, {topics}).
 -record(fetch_response_topic, {topic_name, partitions}).
 -record(fetch_response_partition, {partition_id, error_code, highwater_mark_offset, message_set}).
+
+%% Offset
+
+-define(OFFSET_API_VERSION, 0).
+
+-record(offset_request, {broker_id, topics}).
+-record(offset_request_topic, {topic_name, partitions}).
+-record(offset_request_partition, {partition_id, time, max_number_of_offsets}).
+
+-record(offset_response, {topics}).
+-record(offset_response_topic, {topic_name, partitions}).
+-record(offset_response_partition, {partition_id, error_code, offsets}).
