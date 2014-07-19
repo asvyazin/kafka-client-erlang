@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% public API
--export([start_link/2, metadata/3, produce/3, fetch/3, offset/3]).
+-export([start_link/2, metadata/3, produce/3, fetch/3, offset/3, consumer_metadata/3, offset_commit/3]).
 
 -include("api_key.hrl").
 -include("api.hrl").
@@ -29,6 +29,12 @@ fetch(Pid, ClientId, Req) ->
 
 offset(Pid, ClientId, Req) ->
     gen_server:call(Pid, {offset, ClientId, Req}).
+
+consumer_metadata(Pid, ClientId, Req) ->
+    gen_server:call(Pid, {consumer_metadata, ClientId, Req}).
+
+offset_commit(Pid, ClientId, Req) ->
+    gen_server:call(Pid, {offset_commit, ClientId, Req}).
 
 %% gen_server callbacks
 
@@ -62,6 +68,18 @@ handle_call({offset, ClientId, Req}, From, State = #state{ put_mod = Put }) ->
     ReqBytes = put:run(Put, offset:put_request(Put, Req)),
     send_request(#raw_request{ api_key = ?OFFSET_REQUEST
 			     , api_version = ?OFFSET_API_VERSION
+			     , client_id = ClientId
+			     , request_bytes = ReqBytes }, From, State);
+handle_call({consumer_metadata, ClientId, Req}, From, State = #state{ put_mod = Put }) ->
+    ReqBytes = put:run(Put, consumer_metadata:put_request(Put, Req)),
+    send_request(#raw_request{ api_key = ?CONSUMER_METADATA_REQUEST
+			     , api_version = ?CONSUMER_METADATA_API_VERSION
+			     , client_id = ClientId
+			     , request_bytes = ReqBytes }, From, State);
+handle_call({offset_commit, ClientId, Req}, From, State = #state{ put_mod = Put }) ->
+    ReqBytes = put:run(Put, offset_commit:put_request(Put, Req)),
+    send_request(#raw_request{ api_key = ?OFFSET_COMMIT_REQUEST
+			     , api_version = ?OFFSET_COMMIT_API_VERSION
 			     , client_id = ClientId
 			     , request_bytes = ReqBytes }, From, State).
 
@@ -97,4 +115,8 @@ do_get(?PRODUCE_REQUEST, Get) ->
 do_get(?FETCH_REQUEST, Get) ->
     fetch:get_response(Get);
 do_get(?OFFSET_REQUEST, Get) ->
-    offset:get_response(Get).
+    offset:get_response(Get);
+do_get(?CONSUMER_METADATA_REQUEST, Get) ->
+    consumer_metadata:get_response(Get);
+do_get(?OFFSET_COMMIT_REQUEST, Get) ->
+    offset_commit:get_response(Get).

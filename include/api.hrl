@@ -53,3 +53,23 @@
 -record(offset_response, {topics}).
 -record(offset_response_topic, {topic_name, partitions}).
 -record(offset_response_partition, {partition_id, error_code, offsets}).
+
+% Consumer metadata
+
+-define(CONSUMER_METADATA_API_VERSION, 0).
+
+-record(consumer_metadata_request, {consumer_group}).
+
+-record(consumer_metadata_response, {error_code, coordinator_id, coordinator_host, coordinator_port}).
+
+% Offset commit
+
+-define(OFFSET_COMMIT_API_VERSION, 0).
+
+-record(offset_commit_request, {consumer_group, topics}).
+-record(offset_commit_request_topic, {topic_name, partitions}).
+-record(offset_commit_request_partition, {partition_id, offset, timestamp, metadata}).
+
+-record(offset_commit_response, {topics}).
+-record(offset_commit_response_topic, {topic_name, partitions}).
+-record(offset_commit_response_partition, {partition_id, error_code}).
