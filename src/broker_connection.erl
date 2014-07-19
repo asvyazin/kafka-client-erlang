@@ -45,7 +45,7 @@ init([Address, Port]) ->
     {ok, Sock} = connect(Address, Port),
     {ok, #state{ socket = Sock
 	       , current_correlation_id = 0
-	       , waiting_requests = []
+	       , waiting_requests = maps:new()
 	       , put_mod = put:new()
 	       , get_mod = get:new()}}.
 
@@ -100,12 +100,12 @@ send_request(RawRequest, From, State = #state{ socket = Socket
     ok = gen_tcp:send(Socket, RawReqBytes),
     ReqInfo = #request_info{ api_key = RawRequest#raw_request.api_key, from = From },
     {noreply, State#state{ current_correlation_id = CurrentCorrelationId + 1
-			 , waiting_requests = [{CurrentCorrelationId, ReqInfo} | WaitingRequests]}}.
+			 , waiting_requests = maps:put(CurrentCorrelationId, ReqInfo, WaitingRequests)}}.
     
 handle_info({tcp, Socket, <<CorrelationId:32/integer-big, ResponseData/binary>>}, State = #state{waiting_requests = Requests, get_mod = Get}) ->
-    #request_info{api_key = ApiKey, from = From} = proplists:get_value(CorrelationId, Requests),
+    #request_info{api_key = ApiKey, from = From} = maps:get(CorrelationId, Requests),
     gen_server:reply(From, deserialize_response(ApiKey, Get, ResponseData)),
-    NewRequests = proplists:delete(CorrelationId, Requests),
+    NewRequests = maps:remove(CorrelationId, Requests),
     inet:setopts(Socket, [{active, once}]),
     {noreply, State#state{waiting_requests = NewRequests}}.
 
