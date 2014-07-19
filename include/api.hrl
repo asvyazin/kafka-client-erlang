@@ -73,3 +73,15 @@
 -record(offset_commit_response, {topics}).
 -record(offset_commit_response_topic, {topic_name, partitions}).
 -record(offset_commit_response_partition, {partition_id, error_code}).
+
+% Offset fetch
+
+-define(OFFSET_FETCH_API_VERSION, 0).
+
+-record(offset_fetch_request, {consumer_group, topics}).
+-record(offset_fetch_request_topic, {topic_name, partitions}).
+-record(offset_fetch_request_partition, {partition_id}).
+
+-record(offset_fetch_response, {topics}).
+-record(offset_fetch_response_topic, {topic_name, partitions}).
+-record(offset_fetch_response_partition, {partition_id, offset, metadata, error_code}).

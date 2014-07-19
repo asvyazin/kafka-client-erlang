@@ -22,7 +22,8 @@ put_request_partition(Put, #offset_commit_request_partition{ partition_id = Part
 	       put:string(Put, Metadata)]).
 
 get_response(Get) ->
-    get:array(Get, get_response_topic(Get)).
+    do([Get || Topics <- get:array(Get, get_response_topic(Get)),
+	       return(#offset_commit_response{ topics = Topics })]).
 
 get_response_topic(Get) ->
     do([Get || TopicName <- get:string(Get),

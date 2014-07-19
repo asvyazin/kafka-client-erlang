@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% public API
--export([start_link/2, metadata/3, produce/3, fetch/3, offset/3, consumer_metadata/3, offset_commit/3]).
+-export([start_link/2, metadata/3, produce/3, fetch/3, offset/3, consumer_metadata/3, offset_commit/3, offset_fetch/3]).
 
 -include("api_key.hrl").
 -include("api.hrl").
@@ -35,6 +35,9 @@ consumer_metadata(Pid, ClientId, Req) ->
 
 offset_commit(Pid, ClientId, Req) ->
     gen_server:call(Pid, {offset_commit, ClientId, Req}).
+
+offset_fetch(Pid, ClientId, Req) ->
+    gen_server:call(Pid, {offset_fetch, ClientId, Req}).
 
 %% gen_server callbacks
 
@@ -81,6 +84,12 @@ handle_call({offset_commit, ClientId, Req}, From, State = #state{ put_mod = Put 
     send_request(#raw_request{ api_key = ?OFFSET_COMMIT_REQUEST
 			     , api_version = ?OFFSET_COMMIT_API_VERSION
 			     , client_id = ClientId
+			     , request_bytes = ReqBytes }, From, State);
+handle_call({offset_fetch, ClientId, Req}, From, State = #state{ put_mod = Put }) ->
+    ReqBytes = put:run(Put, offset_fetch:put_request(Put, Req)),
+    send_request(#raw_request{ api_key = ?OFFSET_FETCH_REQUEST
+			     , api_version = ?OFFSET_FETCH_API_VERSION
+			     , client_id = ClientId
 			     , request_bytes = ReqBytes }, From, State).
 
 send_request(RawRequest, From, State = #state{ socket = Socket
@@ -119,4 +128,6 @@ do_get(?OFFSET_REQUEST, Get) ->
 do_get(?CONSUMER_METADATA_REQUEST, Get) ->
     consumer_metadata:get_response(Get);
 do_get(?OFFSET_COMMIT_REQUEST, Get) ->
-    offset_commit:get_response(Get).
+    offset_commit:get_response(Get);
+do_get(?OFFSET_FETCH_REQUEST, Get) ->
+    offset_fetch:get_response(Get).

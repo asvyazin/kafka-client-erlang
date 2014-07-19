@@ -50,8 +50,8 @@ metadata_test_() ->
 		      partition_id = 0,
 		      time = -1,
 		      max_number_of_offsets = 1}]}]})),
-     ?_assertMatch(#consumer_metadata_response{},
-        broker_connection:consumer_metadata(Pid, ?CLIENT_ID, #consumer_metadata_request{ consumer_group = <<"testConsumerGroup">> })),
+%     ?_assertMatch(#consumer_metadata_response{},
+%        broker_connection:consumer_metadata(Pid, ?CLIENT_ID, #consumer_metadata_request{ consumer_group = <<"testConsumerGroup">> })),
      ?_assertMatch(#offset_commit_response{},
         broker_connection:offset_commit(Pid, ?CLIENT_ID,
 	  #offset_commit_request {
@@ -64,4 +64,14 @@ metadata_test_() ->
 		       partition_id = 0,
 		       offset = 100,
 		       timestamp = 100,
-		       metadata = <<"metadata">>}]}]}))].
+		       metadata = <<"metadata">>}]}]})),
+     ?_assertMatch(#offset_fetch_response{},
+         broker_connection:offset_fetch(Pid, ?CLIENT_ID,
+           #offset_fetch_request {
+	      consumer_group = <<"testConsumergroup">>,
+	      topics = [
+                #offset_fetch_request_topic {
+		   topic_name = <<"test">>,
+		   partitions = [
+                     #offset_fetch_request_partition {
+			partition_id = 0}]}]}))].
