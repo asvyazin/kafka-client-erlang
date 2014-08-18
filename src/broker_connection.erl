@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% public API
--export([start_link/2, metadata/3, produce/3, fetch/3, offset/3, consumer_metadata/3, offset_commit/3, offset_fetch/3]).
+-export([start_link/1, metadata/3, produce/3, fetch/3, offset/3, consumer_metadata/3, offset_commit/3, offset_fetch/3]).
 
 -include("api_key.hrl").
 -include("api.hrl").
@@ -15,8 +15,8 @@
 
 -record(request_info, {api_key, from}).
 
-start_link(Address, Port) ->
-    gen_server:start_link(?MODULE, [Address, Port], []).
+start_link(Address) ->
+    gen_server:start_link(?MODULE, [Address], []).
 
 metadata(Pid, ClientId, Req) ->
     gen_server:call(Pid, {metadata, ClientId, Req}).
@@ -41,8 +41,8 @@ offset_fetch(Pid, ClientId, Req) ->
 
 %% gen_server callbacks
 
-init([Address, Port]) ->
-    {ok, Sock} = connect(Address, Port),
+init([Address]) ->
+    {ok, Sock} = connect(Address),
     {ok, #state{ socket = Sock
 	       , current_correlation_id = 0
 	       , waiting_requests = maps:new()
@@ -111,8 +111,8 @@ handle_info({tcp, Socket, <<CorrelationId:32/integer-big, ResponseData/binary>>}
 
 %% private
 
-connect(Address, Port) ->
-    gen_tcp:connect(Address, Port, [binary, {packet, 4}, {active, once}]).
+connect(#broker_address{ host = Host, port = Port }) ->
+    gen_tcp:connect(Host, Port, [binary, {packet, 4}, {active, once}]).
 
 deserialize_response(ApiKey, Get, ResponseData) ->
     Get:eval(do_get(ApiKey, Get), ResponseData).

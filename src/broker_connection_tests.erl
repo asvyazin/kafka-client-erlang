@@ -6,7 +6,7 @@
 -define(CLIENT_ID, <<"testClientId">>).
 
 metadata_test_() ->
-    {ok, Pid} = broker_connection:start_link("localhost", 9092),
+    {ok, Pid} = broker_connection:start_link(#broker_address{ host = "localhost", port = 9092 }),
     [?_assertMatch(#metadata_response{}, broker_connection:metadata(Pid, ?CLIENT_ID, #metadata_request{ topics = [<<"test">>] })),
      ?_assertMatch(#produce_response{},
         broker_connection:produce(Pid, ?CLIENT_ID,

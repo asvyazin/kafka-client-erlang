@@ -1,3 +1,5 @@
+-record(broker_address, {host, port}).
+
 % Raw request
 
 -record(raw_request, {api_key, api_version, correlation_id, client_id, request_bytes}).
