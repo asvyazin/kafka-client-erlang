@@ -5,8 +5,24 @@
 
 -define(CLIENT_ID, <<"testClientId">>).
 
-metadata_test_() ->
-    {ok, Pid} = broker_connection:start_link(#broker_address{ host = "localhost", port = 9092 }),
+metadata_manager_test_() ->
+    ClusterId = <<"1">>,
+    {setup
+    , fun () ->
+	      {ok, MetadataPid} = metadata_manager:start_link(ClusterId, ?CLIENT_ID, [#broker_address{ host = <<"localhost">>, port = 9092 }]),
+	      {ok, ConnectionsPid} = broker_connection_manager:start_link(ClusterId),
+	      {ok, ConnectionsSup} = broker_connection_sup:start_link(),
+	      {MetadataPid, ConnectionsPid, ConnectionsSup}
+      end
+    , fun ({MetadataPid, ConnectionsPid, ConnectionsSup}) ->
+	      metadata_manager:stop(MetadataPid),
+	      broker_connection_manager:stop(ConnectionsPid),
+	      exit(ConnectionsSup, shutdown)
+      end
+    , [?_assertMatch({ok, _}, metadata_manager:get_address(ClusterId, <<"test">>, 0))]}.
+
+broker_connection_test_() ->
+    {ok, Pid} = broker_connection:start_link(#broker_address{ host = <<"localhost">>, port = 9092 }),
     [?_assertMatch(#metadata_response{}, broker_connection:metadata(Pid, ?CLIENT_ID, #metadata_request{ topics = [<<"test">>] })),
      ?_assertMatch(#produce_response{},
         broker_connection:produce(Pid, ?CLIENT_ID,

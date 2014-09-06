@@ -45,7 +45,7 @@ init([Address]) ->
     {ok, Sock} = connect(Address),
     {ok, #state{ socket = Sock
 	       , current_correlation_id = 0
-	       , waiting_requests = maps:new()
+	       , waiting_requests = dict:new()
 	       , put_mod = put:new()
 	       , get_mod = get:new()}}.
 
@@ -100,19 +100,19 @@ send_request(RawRequest, From, State = #state{ socket = Socket
     ok = gen_tcp:send(Socket, RawReqBytes),
     ReqInfo = #request_info{ api_key = RawRequest#raw_request.api_key, from = From },
     {noreply, State#state{ current_correlation_id = CurrentCorrelationId + 1
-			 , waiting_requests = maps:put(CurrentCorrelationId, ReqInfo, WaitingRequests)}}.
+			 , waiting_requests = dict:store(CurrentCorrelationId, ReqInfo, WaitingRequests)}}.
     
 handle_info({tcp, Socket, <<CorrelationId:32/integer-big, ResponseData/binary>>}, State = #state{waiting_requests = Requests, get_mod = Get}) ->
-    #request_info{api_key = ApiKey, from = From} = maps:get(CorrelationId, Requests),
+    #request_info{api_key = ApiKey, from = From} = dict:fetch(CorrelationId, Requests),
     gen_server:reply(From, deserialize_response(ApiKey, Get, ResponseData)),
-    NewRequests = maps:remove(CorrelationId, Requests),
+    NewRequests = dict:erase(CorrelationId, Requests),
     inet:setopts(Socket, [{active, once}]),
     {noreply, State#state{waiting_requests = NewRequests}}.
 
 %% private
 
 connect(#broker_address{ host = Host, port = Port }) ->
-    gen_tcp:connect(Host, Port, [binary, {packet, 4}, {active, once}]).
+    gen_tcp:connect(binary_to_list(Host), Port, [binary, {packet, 4}, {active, once}]).
 
 deserialize_response(ApiKey, Get, ResponseData) ->
     Get:eval(do_get(ApiKey, Get), ResponseData).

@@ -1,1 +1,1 @@
-erl -sname kafka_client -pz ebin -pz deps/erlando/ebin -pz deps/pmod_transform/ebin
+erl -sname kafka_client -pz ebin -pz deps/erlando/ebin -pz deps/pmod_transform/ebin -pz deps/lager/ebin -pz deps/goldrush/ebin
