@@ -4,11 +4,14 @@
 
 -behaviour(application).
 
--export([start/2, stop/1, new_cluster_client/1]).
+-export([start/0, start/2, stop/1, new_cluster_client/1]).
+
+start() ->
+    lager:start(),
+    application:start(kafka_client).
 
 start(normal, []) ->
-    {ok, ClientId} = application:get_env(client_id),
-    kafka_client_sup:start_link(ClientId).
+    kafka_client_sup:start_link().
 
 stop([]) ->
     ok.

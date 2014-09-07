@@ -30,6 +30,8 @@ array(StateT, L, M) ->
     do([StateT || int32_big(StateT, length(L)),
 		  monad:sequence(StateT, [M(X) || X <- L])]).
 
+bytes(StateT, undefined) ->
+    StateT:modify(fun (S) -> S end);
 bytes(StateT, Bytes) ->
     do([StateT || int32_big(StateT, byte_size(Bytes)),
 		  bytes_without_prefix(StateT, Bytes)]).

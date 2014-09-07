@@ -4,17 +4,17 @@
 
 -behaviour(supervisor).
 
--export([start_link/1]).
+-export([start_link/0]).
 
 -export([init/1]).
 
-start_link(ClientId) ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [ClientId]).
+start_link() ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-init([ClientId]) ->
+init([]) ->
     {ok, {{simple_one_for_one, 1, 1},
 	  [{ kafka_cluster_client_sup
-	   , {kafka_cluster_client_sup, start_link, [ClientId]}
+	   , {kafka_cluster_client_sup, start_link, []}
 	   , temporary
 	   , 5000
 	   , supervisor

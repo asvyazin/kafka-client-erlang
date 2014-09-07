@@ -16,7 +16,7 @@ metadata_manager_test_() ->
 	      application:stop(kafka_client)
       end
     , fun (ClientSup) ->
-	      [?_assertMatch({ok, _}, metadata_manager:get_address(ClientSup, <<"test">>, 0))]
+	      [?_assertMatch({ok, _}, metadata_manager:get_address(ClientSup, ?CLIENT_ID, <<"test">>, 0))]
       end
     }.
 

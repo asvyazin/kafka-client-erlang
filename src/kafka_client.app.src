@@ -5,7 +5,7 @@
   {vsn, "0.0.1"},
   {modules, []},
   {registered, [kafka_client_sup]},
-  {applications, [kernel, stdlib]},
+  {applications, [kernel, stdlib, lager]},
   {mod, {kafka_client, []}},
   {env, [
     %% default log level

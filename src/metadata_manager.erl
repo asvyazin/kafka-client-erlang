@@ -2,7 +2,7 @@
 -author('Alexander Svyazin <guybrush@live.ru>').
 
 %% API
--export([start_link/3, get_address/3, stop/1]).
+-export([start_link/2, get_address/4, stop/1, force_update_metadata/3]).
 
 -behaviour(gen_server).
 
@@ -17,34 +17,41 @@
 -record(state, { bootstrap_addresses
 	       , topic_to_address
 	       , waiting_for_metadata
-	       , client_id
 	       , node_id_to_address
 	       , parent_sup }).
 
-start_link(ClientId, BootstrapAddresses, ParentSup) ->
-    gen_server:start_link({global, {?MODULE, ParentSup}}, ?MODULE, [ClientId, BootstrapAddresses, ParentSup], []).
+start_link(BootstrapAddresses, ParentSup) ->
+    gen_server:start_link({global, {?MODULE, ParentSup}}, ?MODULE, [BootstrapAddresses, ParentSup], []).
 
-get_address(ParentSup, Topic, PartitionId) ->
-    gen_server:call({global, {?MODULE, ParentSup}}, {get_address, Topic, PartitionId}).
+get_address(ParentSup, ClientId, Topic, PartitionId) ->
+    gen_server:call({global, {?MODULE, ParentSup}}, {get_address, ClientId, Topic, PartitionId}).
+
+force_update_metadata(ParentSup, ClientId, Topic) ->
+    gen_server:call({global, {?MODULE, ParentSup}}, {force_update_metadata, ClientId, Topic}).
 
 stop(ParentSup) ->
     gen_server:cast({global, {?MODULE, ParentSup}}, stop).
 
-init([ClientId, BootstrapAddresses, ParentSup]) ->
+init([BootstrapAddresses, ParentSup]) ->
     {ok, #state{ bootstrap_addresses = BootstrapAddresses
 	       , topic_to_address = dict:new()
 	       , waiting_for_metadata = dict:new()
-	       , client_id = ClientId
 	       , node_id_to_address = dict:new()
 	       , parent_sup = ParentSup }}.
 
-handle_call({get_address, Topic, PartitionId}, From, State = #state{ topic_to_address = Topic2Address }) ->
+handle_call({get_address, ClientId, Topic, PartitionId}, From, State = #state{ topic_to_address = Topic2Address }) ->
     case dict:find({Topic, PartitionId}, Topic2Address) of
 	{ok, Address} ->
 	    {reply, {ok, Address}, State};
 	error ->
-	    maybe_begin_update_metadata_for_topic(Topic, PartitionId, From, State)
-    end.
+	    maybe_begin_update_metadata_for_topic(ClientId, Topic,
+						  fun (#state{ topic_to_address = T2A }) ->
+							  Addr = dict:fetch({Topic, PartitionId}, T2A),
+							  gen_server:reply(From, {ok, Addr})
+						  end, State)
+    end;
+handle_call({force_update_metadata, ClientId, Topic}, From, State = #state{}) ->
+    maybe_begin_update_metadata_for_topic(ClientId, Topic, fun (_) -> gen_server:reply(From, ok) end, State).
 
 handle_cast({metadata_received, #metadata_response{ brokers = Brokers, topics = Topics }}
 	   , State = #state{ node_id_to_address = NodeId2Address
@@ -52,28 +59,26 @@ handle_cast({metadata_received, #metadata_response{ brokers = Brokers, topics = 
 			   , waiting_for_metadata = WaitingForMetadata }) ->
     NewNodeId2Address = update_brokers(Brokers, NodeId2Address),
     NewTopic2Address = update_topics(Topics, Topic2Address, NewNodeId2Address),
+    NewState = State#state{ node_id_to_address = NewNodeId2Address, topic_to_address = NewTopic2Address },
     NewWaitingForMetadata = lists:foldl(fun (#topic_metadata{ topic_name = T }, W) ->
-						{ok, Waiters} = dict:find(T, W),
-						lists:foreach(fun ({Pid, PartitionId}) ->
-								      {ok, Address} = dict:find({T, PartitionId}, NewTopic2Address),
-								      gen_server:reply(Pid, {ok, Address})
-							      end, Waiters),
+						lists:foreach(fun (Callback) ->
+								      Callback(NewState)
+							      end, dict:fetch(T, W)),
 						dict:erase(T, W)
 					end, WaitingForMetadata, Topics),
-    {noreply, State#state{ node_id_to_address = NewNodeId2Address, topic_to_address = NewTopic2Address, waiting_for_metadata = NewWaitingForMetadata }};
+    {noreply, NewState#state{ waiting_for_metadata = NewWaitingForMetadata }};
 handle_cast(stop, State) ->
     {stop, normal, State}.
 
-maybe_begin_update_metadata_for_topic(Topic, PartitionId, From, State = #state{ waiting_for_metadata = WaitingForMetadata
-									      , client_id = ClientId
-									      , bootstrap_addresses = BootstrapAddresses
-									      , parent_sup = ParentSup }) ->
+maybe_begin_update_metadata_for_topic(ClientId, Topic, Callback, State = #state{ waiting_for_metadata = WaitingForMetadata
+									       , bootstrap_addresses = BootstrapAddresses
+									       , parent_sup = ParentSup }) ->
     case dict:find(Topic, WaitingForMetadata) of
 	{ok, _} -> ok;
 	error ->
 	    spawn_link(?MODULE, update_metadata_for_topic, [Topic, ClientId, BootstrapAddresses, self(), ParentSup])
     end,
-    NewWaitingForMetadata = dict:append_list(Topic, [{From, PartitionId}], WaitingForMetadata),
+    NewWaitingForMetadata = dict:append_list(Topic, [Callback], WaitingForMetadata),
     {noreply, State#state{ waiting_for_metadata = NewWaitingForMetadata }}.
 
 update_metadata_for_topic(Topic, ClientId, BootstrapAddresses, MyPid, ParentSup) ->
