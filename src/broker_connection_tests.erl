@@ -6,20 +6,19 @@
 -define(CLIENT_ID, <<"testClientId">>).
 
 metadata_manager_test_() ->
-    ClusterId = <<"1">>,
-    {setup
+    { setup
     , fun () ->
-	      {ok, MetadataPid} = metadata_manager:start_link(ClusterId, ?CLIENT_ID, [#broker_address{ host = <<"localhost">>, port = 9092 }]),
-	      {ok, ConnectionsPid} = broker_connection_manager:start_link(ClusterId),
-	      {ok, ConnectionsSup} = broker_connection_sup:start_link(),
-	      {MetadataPid, ConnectionsPid, ConnectionsSup}
+	      application:start(kafka_client),
+	      {ok, ClientSup} = kafka_client:new_cluster_client([#broker_address{ host = <<"localhost">>, port = 9092 }]),
+	      ClientSup
       end
-    , fun ({MetadataPid, ConnectionsPid, ConnectionsSup}) ->
-	      metadata_manager:stop(MetadataPid),
-	      broker_connection_manager:stop(ConnectionsPid),
-	      exit(ConnectionsSup, shutdown)
+    , fun (_ClientSup) ->
+	      application:stop(kafka_client)
       end
-    , [?_assertMatch({ok, _}, metadata_manager:get_address(ClusterId, <<"test">>, 0))]}.
+    , fun (ClientSup) ->
+	      [?_assertMatch({ok, _}, metadata_manager:get_address(ClientSup, <<"test">>, 0))]
+      end
+    }.
 
 broker_connection_test_() ->
     {ok, Pid} = broker_connection:start_link(#broker_address{ host = <<"localhost">>, port = 9092 }),

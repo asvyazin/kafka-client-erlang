@@ -4,10 +4,11 @@
  [{description, "Kafka client"},
   {vsn, "0.0.1"},
   {modules, []},
-  {registered, []},
+  {registered, [kafka_client_sup]},
   {applications, [kernel, stdlib]},
-
+  {mod, {kafka_client, []}},
   {env, [
     %% default log level
-    {log_level, error}
+    {log_level, error},
+    {client_id, <<"testClient">>}
   ]}]}.

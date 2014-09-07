@@ -10,30 +10,33 @@
 
 -include("api.hrl").
 
--record(state, { connections, monitors, client_id }).
+-record(state, { connections, monitors, connection_sup }).
 -record(connection_item, { connection, monitor_ref }).
 
-start_link(ClientId) ->
-    gen_server:start_link({global, {?MODULE, ClientId}}, ?MODULE, [ClientId], []).
+start_link(ParentSup) ->
+    gen_server:start_link({global, {?MODULE, ParentSup}}, ?MODULE, [], []).
 
-init([ClientId]) ->
-    {ok, #state{ connections = dict:new(), monitors = dict:new(), client_id = ClientId }}.
+init([]) ->
+    {ok, ConnSup} = broker_connection_sup:start_link(),
+    {ok, #state{ connections = dict:new(), monitors = dict:new(), connection_sup = ConnSup }}.
 
-get_connection(ClientId, Address) ->
-    gen_server:call({global, {?MODULE, ClientId}}, {get_connection, Address}).
+get_connection(ParentSup, Address) ->
+    gen_server:call({global, {?MODULE, ParentSup}}, {get_connection, Address}).
 
-get_active_connections(ClientId) ->
-    gen_server:call({global, {?MODULE, ClientId}}, get_active_connections).
+get_active_connections(ParentSup) ->
+    gen_server:call({global, {?MODULE, ParentSup}}, get_active_connections).
 
-stop(ClientId) ->
-    gen_server:cast({global, {?MODULE, ClientId}}, stop).
+stop(ParentSup) ->
+    gen_server:cast({global, {?MODULE, ParentSup}}, stop).
 
-handle_call({get_connection, Address}, _From, State = #state{ connections = Connections, monitors = Monitors, client_id = _ClientId }) ->
+handle_call({get_connection, Address}, _From, State = #state{ connections = Connections
+							    , monitors = Monitors
+							    , connection_sup = ConnSup }) ->
     case dict:find(Address, Connections) of
 	{ok, #connection_item{ connection = Connection }} ->
 	    {reply, {ok, Connection}, State};
 	error ->
-	    {ok, Connection} = broker_connection_sup:new_connection(Address),
+	    {ok, Connection} = broker_connection_sup:new_connection(ConnSup, Address),
 	    MonitorRef = monitor(process, Connection),
 	    NewConnections = dict:store(Address, #connection_item{ connection = Connection, monitor_ref = MonitorRef }, Connections),
 	    NewMonitors = dict:store(MonitorRef, Address, Monitors),

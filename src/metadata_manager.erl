@@ -14,24 +14,29 @@
 
 -include("api.hrl").
 
--record(state, { bootstrap_addresses, topic_to_address, waiting_for_metadata, client_id, cluster_id, node_id_to_address }).
+-record(state, { bootstrap_addresses
+	       , topic_to_address
+	       , waiting_for_metadata
+	       , client_id
+	       , node_id_to_address
+	       , parent_sup }).
 
-start_link(ClusterId, ClientId, BootstrapAddresses) ->
-    gen_server:start_link({global, {?MODULE, ClusterId}}, ?MODULE, [ClusterId, ClientId, BootstrapAddresses], []).
+start_link(ClientId, BootstrapAddresses, ParentSup) ->
+    gen_server:start_link({global, {?MODULE, ParentSup}}, ?MODULE, [ClientId, BootstrapAddresses, ParentSup], []).
 
-get_address(ClusterId, Topic, PartitionId) ->
-    gen_server:call({global, {?MODULE, ClusterId}}, {get_address, Topic, PartitionId}).
+get_address(ParentSup, Topic, PartitionId) ->
+    gen_server:call({global, {?MODULE, ParentSup}}, {get_address, Topic, PartitionId}).
 
-stop(ClusterId) ->
-    gen_server:cast({global, {?MODULE, ClusterId}}, stop).
+stop(ParentSup) ->
+    gen_server:cast({global, {?MODULE, ParentSup}}, stop).
 
-init([ClusterId, ClientId, BootstrapAddresses]) ->
+init([ClientId, BootstrapAddresses, ParentSup]) ->
     {ok, #state{ bootstrap_addresses = BootstrapAddresses
 	       , topic_to_address = dict:new()
 	       , waiting_for_metadata = dict:new()
 	       , client_id = ClientId
-	       , cluster_id = ClusterId
-	       , node_id_to_address = dict:new() }}.
+	       , node_id_to_address = dict:new()
+	       , parent_sup = ParentSup }}.
 
 handle_call({get_address, Topic, PartitionId}, From, State = #state{ topic_to_address = Topic2Address }) ->
     case dict:find({Topic, PartitionId}, Topic2Address) of
@@ -42,7 +47,9 @@ handle_call({get_address, Topic, PartitionId}, From, State = #state{ topic_to_ad
     end.
 
 handle_cast({metadata_received, #metadata_response{ brokers = Brokers, topics = Topics }}
-	   , State = #state{ node_id_to_address = NodeId2Address, topic_to_address = Topic2Address, waiting_for_metadata = WaitingForMetadata }) ->
+	   , State = #state{ node_id_to_address = NodeId2Address
+			   , topic_to_address = Topic2Address
+			   , waiting_for_metadata = WaitingForMetadata }) ->
     NewNodeId2Address = update_brokers(Brokers, NodeId2Address),
     NewTopic2Address = update_topics(Topics, Topic2Address, NewNodeId2Address),
     NewWaitingForMetadata = lists:foldl(fun (#topic_metadata{ topic_name = T }, W) ->
@@ -59,22 +66,22 @@ handle_cast(stop, State) ->
 
 maybe_begin_update_metadata_for_topic(Topic, PartitionId, From, State = #state{ waiting_for_metadata = WaitingForMetadata
 									      , client_id = ClientId
-									      , cluster_id = ClusterId
-									      , bootstrap_addresses = BootstrapAddresses }) ->
+									      , bootstrap_addresses = BootstrapAddresses
+									      , parent_sup = ParentSup }) ->
     case dict:find(Topic, WaitingForMetadata) of
 	{ok, _} -> ok;
 	error ->
-	    spawn_link(?MODULE, update_metadata_for_topic, [Topic, ClusterId, ClientId, BootstrapAddresses, self()])
+	    spawn_link(?MODULE, update_metadata_for_topic, [Topic, ClientId, BootstrapAddresses, self(), ParentSup])
     end,
     NewWaitingForMetadata = dict:append_list(Topic, [{From, PartitionId}], WaitingForMetadata),
     {noreply, State#state{ waiting_for_metadata = NewWaitingForMetadata }}.
 
-update_metadata_for_topic(Topic, ClusterId, ClientId, BootstrapAddresses, MyPid) ->
-    {ok, ActiveConnections} = broker_connection_manager:get_active_connections(ClusterId),
+update_metadata_for_topic(Topic, ClientId, BootstrapAddresses, MyPid, ParentSup) ->
+    {ok, ActiveConnections} = broker_connection_manager:get_active_connections(ParentSup),
     Req = #metadata_request{ topics = [Topic] },
-    {ok, Metadata} = case try_update_metadata_from_active_connections(ClusterId, Req, ActiveConnections) of
+    {ok, Metadata} = case try_update_metadata_from_active_connections(ClientId, Req, ActiveConnections) of
 			 {ok, MetadataResponse} -> {ok, MetadataResponse};
-			 _ -> try_update_metadata_from_bootstrap(ClusterId, ClientId, Req, BootstrapAddresses)
+			 _ -> try_update_metadata_from_bootstrap(ParentSup, ClientId, Req, BootstrapAddresses)
 		     end,
     gen_server:cast(MyPid, {metadata_received, Metadata}).
 
@@ -84,10 +91,10 @@ try_update_metadata_from_active_connections(ClientId, Req, [Conn | _Conns]) ->
     Resp = broker_connection:metadata(Conn, ClientId, Req),
     {ok, Resp}.
 
-try_update_metadata_from_bootstrap(_ClusterId, _ClientId, _Req, []) ->
+try_update_metadata_from_bootstrap(_ParentSup, _ClientId, _Req, []) ->
     {error, no_bootstrap_addresses};
-try_update_metadata_from_bootstrap(ClusterId, ClientId, Req, [Address | _Addresses]) ->
-    {ok, Connection} = broker_connection_manager:get_connection(ClusterId, Address),
+try_update_metadata_from_bootstrap(ParentSup, ClientId, Req, [Address | _Addresses]) ->
+    {ok, Connection} = broker_connection_manager:get_connection(ParentSup, Address),
     Resp = broker_connection:metadata(Connection, ClientId, Req),
     {ok, Resp}.
 
