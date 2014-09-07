@@ -5,10 +5,10 @@
 
 -define(CLIENT_ID, <<"testClientId">>).
 
-metadata_manager_test_() ->
+kafka_client_test_() ->
     { setup
     , fun () ->
-	      application:start(kafka_client),
+	      ok = kafka_client:start(),
 	      {ok, ClientSup} = kafka_client:new_cluster_client([#broker_address{ host = <<"localhost">>, port = 9092 }]),
 	      ClientSup
       end
@@ -16,7 +16,8 @@ metadata_manager_test_() ->
 	      application:stop(kafka_client)
       end
     , fun (ClientSup) ->
-	      [?_assertMatch({ok, _}, metadata_manager:get_address(ClientSup, ?CLIENT_ID, <<"test">>, 0))]
+	      [ ?_assertMatch({ok, _}, metadata_manager:get_address(ClientSup, ?CLIENT_ID, <<"test">>, 0))
+	      , ?_assertMatch({ok, _}, kafka_cluster_client:produce(ClientSup, ?CLIENT_ID, <<"test">>, 0, {<<"key">>, <<"value">>}))]
       end
     }.
 
