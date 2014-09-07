@@ -2,7 +2,7 @@
 
 -author('Alexander Svyazin <guybrush@live.ru>').
 
--export([produce/6, produce/5, fetch/6, fetch/5]).
+-export([produce/6, produce/5, fetch/6, fetch/5, offset/6, offset/5]).
 
 -include("api.hrl").
 -define(DEFAULT_REQUIRED_ACKS, 1).
@@ -10,6 +10,7 @@
 -define(DEFAULT_MAX_WAIT_TIME, 10000).
 -define(DEFAULT_MIN_BYTES, 1).
 -define(DEFAULT_MAX_BYTES, 1024*1024).
+-define(DEFAULT_MAX_NUMBER_OF_OFFSETS, 10).
 
 produce(ClusterPid, ClientId, Topic, PartitionId, Msg) ->
     produce(ClusterPid, ClientId, Topic, PartitionId, Msg, []).
@@ -74,6 +75,35 @@ fetch(ClusterPid, ClientId, Topic, PartitionId, Offset, Options) ->
 	{Error, _} -> {error, Error}
     end.
 
+offset(ClusterPid, ClientId, Topic, PartitionId, Time) ->
+    offset(ClusterPid, ClientId, Topic, PartitionId, Time, []).
+
+offset(ClusterPid, ClientId, Topic, PartitionId, Time, Options) ->
+    MaxNumberOfOffsets = proplists:get_value(max_number_of_offsets, Options, ?DEFAULT_MAX_NUMBER_OF_OFFSETS),
+    Req = #offset_request{
+	     broker_id = -1,
+	     topics = [
+	       #offset_request_topic{
+		  topic_name = Topic,
+		  partitions = [
+		    #offset_request_partition{
+		       partition_id = PartitionId,
+		       time = Time,
+		       max_number_of_offsets = MaxNumberOfOffsets}]}]},
+    case do_offset(ClusterPid, ClientId, Topic, PartitionId, Req) of
+	{ok, Offsets} ->
+	    {ok, Offsets};
+	{not_leader_for_partition, _} ->
+	    lager:info("stale node, force update metadata for topic ~p", [Topic]),
+	    ok = metadata_manager:force_update_metadata(ClusterPid, ClientId, Topic),
+	    case do_offset(ClusterPid, ClientId, Topic, PartitionId, Req) of
+		{ok, Offsets} ->
+		    {ok, Offsets};
+		{Error, _} -> {error, Error}
+	    end;
+	{Error, _} -> {error, Error}
+    end.
+
 do_produce(ClusterPid, ClientId, Topic, PartitionId, Req) ->
     {ok, ConnectionPid} = get_connection(ClusterPid, ClientId, Topic, PartitionId),
     #produce_response{
@@ -100,6 +130,19 @@ do_fetch(ClusterPid, ClientId, Topic, PartitionId, Req) ->
 		 highwater_mark_offset = HighwaterMarkOffset,
 		 message_set = MessageSet}]}]} = broker_connection:fetch(ConnectionPid, ClientId, Req),
     {ErrorCode, HighwaterMarkOffset, MessageSet}.
+
+do_offset(ClusterPid, ClientId, Topic, PartitionId, Req) ->
+    {ok, ConnectionPid} = get_connection(ClusterPid, ClientId, Topic, PartitionId),
+    #offset_response{
+       topics = [
+	 #offset_response_topic{
+	    topic_name = Topic,
+	    partitions = [
+	      #offset_response_partition{
+		 partition_id = PartitionId,
+		 error_code = ErrorCode,
+		 offsets = Offsets}]}]} = broker_connection:offset(ConnectionPid, ClientId, Req),
+    {ErrorCode, Offsets}.
 
 get_connection(ClusterPid, ClientId, Topic, PartitionId) ->
     {ok, Address} = metadata_manager:get_address(ClusterPid, ClientId, Topic, PartitionId),

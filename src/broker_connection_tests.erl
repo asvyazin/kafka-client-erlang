@@ -18,7 +18,8 @@ kafka_client_test_() ->
     , fun (ClientSup) ->
 	      [ ?_assertMatch({ok, _}, metadata_manager:get_address(ClientSup, ?CLIENT_ID, <<"test">>, 0))
 	      , ?_assertMatch({ok, _}, kafka_cluster_client:produce(ClientSup, ?CLIENT_ID, <<"test">>, 0, {<<"key">>, <<"value">>}))
-	      , ?_assertMatch({ok, _, _}, kafka_cluster_client:fetch(ClientSup, ?CLIENT_ID, <<"test">>, 0, 0))]
+	      , ?_assertMatch({ok, _, _}, kafka_cluster_client:fetch(ClientSup, ?CLIENT_ID, <<"test">>, 0, 0))
+	      , ?_assertMatch({ok, _}, kafka_cluster_client:offset(ClientSup, ?CLIENT_ID, <<"test">>, 0, 0))]
       end
     }.
 
