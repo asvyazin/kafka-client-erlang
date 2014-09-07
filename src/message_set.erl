@@ -16,6 +16,7 @@ get_size(Msg) ->
 get_message(Get) ->
     do([Get || Offset <- get:int64_big(Get),
 	       MessageSize <- get:int32_big(Get),
+	       Crc32 <- get:int32_big(Get),
 	       MagicByte <- get:int8(Get),
 	       Attributes <- get:int8(Get),
 	       Key <- get:bytes(Get),

@@ -1,9 +1,12 @@
 -module(get).
 -compile({parse_transform, do}).
--export([new/0, int16_big/1, int32_big/1, int64_big/1, string/1, bytes/1, array/2, error_code/1]).
+-export([new/0, int8/1, int16_big/1, int32_big/1, int64_big/1, string/1, bytes/1, array/2, error_code/1]).
 
 new() ->
     state_t:new(identity_m).
+
+int8(StateT) ->
+    StateT:modify_and_return(fun(<<Value:8/integer, Rest/binary>>) -> {Value, Rest} end).
 
 int16_big(StateT) ->
     StateT:modify_and_return(fun(<<Value:16/integer-big, Rest/binary>>) -> {Value, Rest} end).
@@ -62,16 +65,3 @@ convert_error_code(15) ->
     consumer_coordinator_not_available;
 convert_error_code(16) ->
     not_coordinator_for_consumer.
-
-
-
-
-
-
-
-
-
-
-
-
-
