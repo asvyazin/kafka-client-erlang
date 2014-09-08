@@ -106,7 +106,7 @@ offset(ClusterPid, ClientId, Topic, PartitionId, Time, Options) ->
 
 do_produce(ClusterPid, ClientId, Topic, PartitionId, Req) ->
     {ok, ConnectionPid} = get_connection(ClusterPid, ClientId, Topic, PartitionId),
-    #produce_response{
+    {ok, #produce_response{
        topics = [
 	 #produce_response_topic{
 	    topic_name = Topic,
@@ -114,12 +114,12 @@ do_produce(ClusterPid, ClientId, Topic, PartitionId, Req) ->
 	      #produce_response_partition{
 		 partition_id = PartitionId,
 		 error_code = ErrorCode,
-		 offset = Offset }]}]} = broker_connection:produce(ConnectionPid, ClientId, Req),
+		 offset = Offset }]}]}} = broker_connection:produce(ConnectionPid, ClientId, Req),
     {ErrorCode, Offset}.
 
 do_fetch(ClusterPid, ClientId, Topic, PartitionId, Req) ->
     {ok, ConnectionPid} = get_connection(ClusterPid, ClientId, Topic, PartitionId),
-    #fetch_response{
+    {ok, #fetch_response{
        topics = [
 	 #fetch_response_topic{
 	    topic_name = Topic,
@@ -128,12 +128,12 @@ do_fetch(ClusterPid, ClientId, Topic, PartitionId, Req) ->
 		 partition_id = PartitionId,
 		 error_code = ErrorCode,
 		 highwater_mark_offset = HighwaterMarkOffset,
-		 message_set = MessageSet}]}]} = broker_connection:fetch(ConnectionPid, ClientId, Req),
+		 message_set = MessageSet}]}]}} = broker_connection:fetch(ConnectionPid, ClientId, Req),
     {ErrorCode, HighwaterMarkOffset, MessageSet}.
 
 do_offset(ClusterPid, ClientId, Topic, PartitionId, Req) ->
     {ok, ConnectionPid} = get_connection(ClusterPid, ClientId, Topic, PartitionId),
-    #offset_response{
+    {ok, #offset_response{
        topics = [
 	 #offset_response_topic{
 	    topic_name = Topic,
@@ -141,9 +141,15 @@ do_offset(ClusterPid, ClientId, Topic, PartitionId, Req) ->
 	      #offset_response_partition{
 		 partition_id = PartitionId,
 		 error_code = ErrorCode,
-		 offsets = Offsets}]}]} = broker_connection:offset(ConnectionPid, ClientId, Req),
+		 offsets = Offsets}]}]}} = broker_connection:offset(ConnectionPid, ClientId, Req),
     {ErrorCode, Offsets}.
 
 get_connection(ClusterPid, ClientId, Topic, PartitionId) ->
     {ok, Address} = metadata_manager:get_address(ClusterPid, ClientId, Topic, PartitionId),
-    broker_connection_manager:get_connection(ClusterPid, Address).
+    case broker_connection_manager:get_connection(ClusterPid, Address) of
+	{ok, Conn} ->
+	    {ok, Conn};
+	_ ->
+	    ok = metadata_manager:force_update_metadata(ClusterPid, ClientId, Topic),
+	    get_connection(ClusterPid, ClientId, Topic, PartitionId)
+    end.

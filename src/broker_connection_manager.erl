@@ -36,11 +36,15 @@ handle_call({get_connection, Address}, _From, State = #state{ connections = Conn
 	{ok, #connection_item{ connection = Connection }} ->
 	    {reply, {ok, Connection}, State};
 	error ->
-	    {ok, Connection} = broker_connection_sup:new_connection(ConnSup, Address),
-	    MonitorRef = monitor(process, Connection),
-	    NewConnections = dict:store(Address, #connection_item{ connection = Connection, monitor_ref = MonitorRef }, Connections),
-	    NewMonitors = dict:store(MonitorRef, Address, Monitors),
-	    {reply, {ok, Connection}, State#state{ connections = NewConnections, monitors = NewMonitors }}
+	    case broker_connection_sup:new_connection(ConnSup, Address) of
+		{ok, Connection} ->
+		    MonitorRef = monitor(process, Connection),
+		    NewConnections = dict:store(Address, #connection_item{ connection = Connection, monitor_ref = MonitorRef }, Connections),
+		    NewMonitors = dict:store(MonitorRef, Address, Monitors),
+		    {reply, {ok, Connection}, State#state{ connections = NewConnections, monitors = NewMonitors }};
+		Error ->
+		    {reply, Error, State}
+	    end
     end;
 handle_call(get_active_connections, _From, State = #state{ connections = Connections }) ->
     {reply, {ok, [Conn || {_, #connection_item{ connection = Conn }} <- dict:to_list(Connections)]}, State}.

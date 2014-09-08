@@ -86,22 +86,31 @@ update_metadata_for_topic(Topic, ClientId, BootstrapAddresses, MyPid, ParentSup)
     Req = #metadata_request{ topics = [Topic] },
     {ok, Metadata} = case try_update_metadata_from_active_connections(ClientId, Req, ActiveConnections) of
 			 {ok, MetadataResponse} -> {ok, MetadataResponse};
-			 _ -> try_update_metadata_from_bootstrap(ParentSup, ClientId, Req, BootstrapAddresses)
+			 _ -> try_update_metadata_from_bootstrap(ParentSup, ClientId, Req, BootstrapAddresses, [])
 		     end,
     gen_server:cast(MyPid, {metadata_received, Metadata}).
 
 try_update_metadata_from_active_connections(_ClientId, _Req, []) ->
     {error, no_active_connections};
-try_update_metadata_from_active_connections(ClientId, Req, [Conn | _Conns]) ->
-    Resp = broker_connection:metadata(Conn, ClientId, Req),
-    {ok, Resp}.
+try_update_metadata_from_active_connections(ClientId, Req, [Conn | Conns]) ->
+    case broker_connection:metadata(Conn, ClientId, Req) of
+	{ok, Resp} -> {ok, Resp};
+	_ ->
+	    try_update_metadata_from_active_connections(ClientId, Req, Conns)
+    end.
 
-try_update_metadata_from_bootstrap(_ParentSup, _ClientId, _Req, []) ->
-    {error, no_bootstrap_addresses};
-try_update_metadata_from_bootstrap(ParentSup, ClientId, Req, [Address | _Addresses]) ->
-    {ok, Connection} = broker_connection_manager:get_connection(ParentSup, Address),
-    Resp = broker_connection:metadata(Connection, ClientId, Req),
-    {ok, Resp}.
+try_update_metadata_from_bootstrap(_ParentSup, _ClientId, _Req, [], Errors) ->
+    {error, no_bootstrap_addresses, Errors};
+try_update_metadata_from_bootstrap(ParentSup, ClientId, Req, [Address | Addresses], Errors) ->
+    case broker_connection_manager:get_connection(ParentSup, Address) of
+	{ok, Connection} -> 
+	    case broker_connection:metadata(Connection, ClientId, Req) of
+		{ok, Resp} -> {ok, Resp};
+		Error -> try_update_metadata_from_bootstrap(ParentSup, ClientId, Req, Addresses, [Error | Errors])
+	    end;
+	Error ->
+	    try_update_metadata_from_bootstrap(ParentSup, ClientId, Req, Addresses, [Error | Errors])
+    end.
 
 update_brokers(Brokers, NodeId2Address) ->
     lists:foldl(fun (#broker{ node_id = NodeId, host = Host, port = Port }, M) ->

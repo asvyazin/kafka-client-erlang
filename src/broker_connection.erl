@@ -104,7 +104,7 @@ send_request(RawRequest, From, State = #state{ socket = Socket
     
 handle_info({tcp, Socket, <<CorrelationId:32/integer-big, ResponseData/binary>>}, State = #state{waiting_requests = Requests, get_mod = Get}) ->
     #request_info{api_key = ApiKey, from = From} = dict:fetch(CorrelationId, Requests),
-    gen_server:reply(From, deserialize_response(ApiKey, Get, ResponseData)),
+    gen_server:reply(From, {ok, deserialize_response(ApiKey, Get, ResponseData)}),
     NewRequests = dict:erase(CorrelationId, Requests),
     inet:setopts(Socket, [{active, once}]),
     {noreply, State#state{waiting_requests = NewRequests}}.
