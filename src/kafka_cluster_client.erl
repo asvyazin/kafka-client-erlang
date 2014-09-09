@@ -22,25 +22,17 @@ produce(ClusterPid, ClientId, Topic, PartitionId, Msg, Options) ->
 		   end,
     RequiredAcks = proplists:get_value(required_acks, Options, ?DEFAULT_REQUIRED_ACKS),
     Timeout = proplists:get_value(timeout, Options, ?DEFAULT_TIMEOUT),
-    ReqMessage = #message{ offset = -1, key = Key, value = Value },
-    ReqPartition = #produce_request_partition{ partition_id = PartitionId
-					     , message_set = [ReqMessage]},
-    ReqTopic = #produce_request_topic{ topic_name = Topic
-				     , partitions = [ReqPartition]},
-    Req = #produce_request{ required_acks = RequiredAcks
-			  , timeout = Timeout
-			  , topics = [ReqTopic]},
-    case do_produce(ClusterPid, ClientId, Topic, PartitionId, Req) of
-	{ok, Offset} -> {ok, Offset};
-	{not_leader_for_partition, _} ->
-	    lager:info("stale node, force update metadata for topic ~p", [Topic]),
-	    ok = metadata_manager:force_update_metadata(ClusterPid, ClientId, Topic),
-	    case do_produce(ClusterPid, ClientId, Topic, PartitionId, Req) of
-		{ok, Offset} -> {ok, Offset};
-		{Error, _} -> {error, Error}
-	    end;
-	{Error, _} -> {error, Error}
-    end.
+    Req = #produce_request{
+	     required_acks = RequiredAcks,
+	     timeout = Timeout,
+	     topics = [
+	       #produce_request_topic{
+		  topic_name = Topic,
+		  partitions = [
+		    #produce_request_partition{
+		       partition_id = PartitionId,
+		       message_set = [#message{ offset = -1, key = Key, value = Value }]}]}]},
+    do_request(ClusterPid, ClientId, Topic, PartitionId, Req, fun do_produce/5).
 
 fetch(ClusterPid, ClientId, Topic, PartitionId, Offset) ->
     fetch(ClusterPid, ClientId, Topic, PartitionId, Offset, []).
@@ -61,19 +53,7 @@ fetch(ClusterPid, ClientId, Topic, PartitionId, Offset, Options) ->
 		       partition_id = PartitionId,
 		       fetch_offset = Offset,
 		       max_bytes = MaxBytes}]}]},
-    case do_fetch(ClusterPid, ClientId, Topic, PartitionId, Req) of
-	{ok, HighwaterMarkOffset, MessageSet} ->
-	    {ok, HighwaterMarkOffset, MessageSet};
-	{not_leader_for_partition, _, _} ->
-	    lager:info("stale node, force update metadata for topic ~p", [Topic]),
-	    ok = metadata_manager:force_update_metadata(ClusterPid, ClientId, Topic),
-	    case do_fetch(ClusterPid, ClientId, Topic, PartitionId, Req) of
-		{ok, HighwaterMarkOffset, MessageSet} ->
-		    {ok, HighwaterMarkOffset, MessageSet};
-		{Error, _} -> {error, Error}
-	    end;
-	{Error, _} -> {error, Error}
-    end.
+    do_request(ClusterPid, ClientId, Topic, PartitionId, Req, fun do_fetch/5).
 
 offset(ClusterPid, ClientId, Topic, PartitionId, Time) ->
     offset(ClusterPid, ClientId, Topic, PartitionId, Time, []).
@@ -90,19 +70,7 @@ offset(ClusterPid, ClientId, Topic, PartitionId, Time, Options) ->
 		       partition_id = PartitionId,
 		       time = Time,
 		       max_number_of_offsets = MaxNumberOfOffsets}]}]},
-    case do_offset(ClusterPid, ClientId, Topic, PartitionId, Req) of
-	{ok, Offsets} ->
-	    {ok, Offsets};
-	{not_leader_for_partition, _} ->
-	    lager:info("stale node, force update metadata for topic ~p", [Topic]),
-	    ok = metadata_manager:force_update_metadata(ClusterPid, ClientId, Topic),
-	    case do_offset(ClusterPid, ClientId, Topic, PartitionId, Req) of
-		{ok, Offsets} ->
-		    {ok, Offsets};
-		{Error, _} -> {error, Error}
-	    end;
-	{Error, _} -> {error, Error}
-    end.
+    do_request(ClusterPid, ClientId, Topic, PartitionId, Req, fun do_offset/5).
 
 do_produce(ClusterPid, ClientId, Topic, PartitionId, Req) ->
     {ok, ConnectionPid} = get_connection(ClusterPid, ClientId, Topic, PartitionId),
@@ -115,7 +83,7 @@ do_produce(ClusterPid, ClientId, Topic, PartitionId, Req) ->
 		 partition_id = PartitionId,
 		 error_code = ErrorCode,
 		 offset = Offset }]}]}} = broker_connection:produce(ConnectionPid, ClientId, Req),
-    {ErrorCode, Offset}.
+    check_error_code(ErrorCode, Offset).
 
 do_fetch(ClusterPid, ClientId, Topic, PartitionId, Req) ->
     {ok, ConnectionPid} = get_connection(ClusterPid, ClientId, Topic, PartitionId),
@@ -129,7 +97,7 @@ do_fetch(ClusterPid, ClientId, Topic, PartitionId, Req) ->
 		 error_code = ErrorCode,
 		 highwater_mark_offset = HighwaterMarkOffset,
 		 message_set = MessageSet}]}]}} = broker_connection:fetch(ConnectionPid, ClientId, Req),
-    {ErrorCode, HighwaterMarkOffset, MessageSet}.
+    check_error_code(ErrorCode, {HighwaterMarkOffset, MessageSet}).
 
 do_offset(ClusterPid, ClientId, Topic, PartitionId, Req) ->
     {ok, ConnectionPid} = get_connection(ClusterPid, ClientId, Topic, PartitionId),
@@ -142,7 +110,7 @@ do_offset(ClusterPid, ClientId, Topic, PartitionId, Req) ->
 		 partition_id = PartitionId,
 		 error_code = ErrorCode,
 		 offsets = Offsets}]}]}} = broker_connection:offset(ConnectionPid, ClientId, Req),
-    {ErrorCode, Offsets}.
+    check_error_code(ErrorCode, Offsets).
 
 get_connection(ClusterPid, ClientId, Topic, PartitionId) ->
     {ok, Address} = metadata_manager:get_address(ClusterPid, ClientId, Topic, PartitionId),
@@ -152,4 +120,20 @@ get_connection(ClusterPid, ClientId, Topic, PartitionId) ->
 	_ ->
 	    ok = metadata_manager:force_update_metadata(ClusterPid, ClientId, Topic),
 	    get_connection(ClusterPid, ClientId, Topic, PartitionId)
+    end.
+
+do_request(ClusterPid, ClientId, Topic, PartitionId, Req, Fun) ->
+    case Fun(ClusterPid, ClientId, Topic, PartitionId, Req) of
+	{ok, Result} -> {ok, Result};
+	{error, not_leader_for_partition} ->
+	    lager:info("stale node, force update metadata for topic ~p", [Topic]),
+	    ok = metadata_manager:force_update_metadata(ClusterPid, ClientId, Topic),
+	    Fun(ClusterPid, ClientId, Topic, PartitionId, Req);
+	Error -> Error
+    end.    
+
+check_error_code(ErrorCode, Result) ->
+    case ErrorCode of
+	ok -> {ok, Result};
+	_ -> {error, ErrorCode}
     end.
