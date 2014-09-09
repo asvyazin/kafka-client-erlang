@@ -29,23 +29,9 @@ get_active_connections(ParentSup) ->
 stop(ParentSup) ->
     gen_server:cast({global, {?MODULE, ParentSup}}, stop).
 
-handle_call({get_connection, Address}, _From, State = #state{ connections = Connections
-							    , monitors = Monitors
-							    , connection_sup = ConnSup }) ->
-    case dict:find(Address, Connections) of
-	{ok, #connection_item{ connection = Connection }} ->
-	    {reply, {ok, Connection}, State};
-	error ->
-	    case broker_connection_sup:new_connection(ConnSup, Address) of
-		{ok, Connection} ->
-		    MonitorRef = monitor(process, Connection),
-		    NewConnections = dict:store(Address, #connection_item{ connection = Connection, monitor_ref = MonitorRef }, Connections),
-		    NewMonitors = dict:store(MonitorRef, Address, Monitors),
-		    {reply, {ok, Connection}, State#state{ connections = NewConnections, monitors = NewMonitors }};
-		Error ->
-		    {reply, Error, State}
-	    end
-    end;
+handle_call({get_connection, Address}, _From, State) ->
+    {Result, NewState} = do_get_connection(Address, State),
+    {reply, Result, NewState};
 handle_call(get_active_connections, _From, State = #state{ connections = Connections }) ->
     {reply, {ok, [Conn || {_, #connection_item{ connection = Conn }} <- dict:to_list(Connections)]}, State}.
 
@@ -57,3 +43,24 @@ handle_info({'DOWN', MonitorRef, process, _ConnPid, _Info}, State = #state{ conn
     NewConnections = dict:erase(Address, Connections),
     NewMonitors = dict:erase(MonitorRef, Monitors),
     {noreply, State#state{ connections = NewConnections, monitors = NewMonitors }}.
+
+do_get_connection(Address, State = #state{ connections = Connections
+					 , monitors = Monitors
+					 , connection_sup = ConnSup }) ->
+    case dict:find(Address, Connections) of
+	{ok, #connection_item{ connection = Connection }} ->
+	    {{ok, Connection}, State};
+	error ->
+	    Result = broker_connection_sup:new_connection(ConnSup, Address),
+	    S = case Result of
+		    {ok, Connection} ->
+			MonitorRef = monitor(process, Connection),
+			NewConnections = dict:store(Address, #connection_item{ connection = Connection
+									     , monitor_ref = MonitorRef }, Connections),
+			NewMonitors = dict:store(MonitorRef, Address, Monitors),
+			State#state{ connections = NewConnections, monitors = NewMonitors };
+		    _ ->
+			State
+		end,
+	    {Result, S}
+    end.
