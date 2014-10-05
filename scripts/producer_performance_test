@@ -1,0 +1,102 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+%%! -pz ../deps/erlando/ebin -pz ../deps/goldrush/ebin -pz ../deps/lager/ebin -pz ../deps/pmod_transform/ebin -pz ../ebin
+
+-include_lib("../include/api.hrl").
+
+-define(DEFAULT_CLIENT_ID, <<"erlang_producer_performance_test">>).
+-define(DEFAULT_MESSAGE_SIZE, 16).
+
+main(Args) ->
+    Config = parse_args(Args),
+    #{ broker_list := BootstrapAddresses
+     , num_messages := NumMessages
+     , topic := Topic
+     , partition := Partition
+     , eprof := EnableEprof } = Config,
+    Fun = fun () ->
+		  ok = kafka_client:start(),
+		  {ok, Client} = kafka_client:new_cluster_client(BootstrapAddresses),
+		  {_, TotalTime} = profile(fun () ->
+						   do_produce_test(Client, Topic, Partition, NumMessages)
+					   end),
+		  io:format("total time: ~p mcs~n", [TotalTime])
+	  end,
+    case EnableEprof of
+	true -> 
+	    {ok, _} = eprof:start(),
+	    eprof:profile(Fun),
+	    eprof:stop_profiling(),
+	    eprof:analyze(total);
+	_ ->
+	    Fun()
+    end.
+
+do_produce_test(Client, Topic, Partition, NumMessages) ->
+    MainPid = self(),
+    Pid = spawn_link(fun () ->
+			     combine_test_results(MainPid, NumMessages, #{ lags => [] })
+		     end),
+    do_produce_test_iter(Pid, Client, Topic, Partition, NumMessages),
+    receive
+	{test_complete, #{ lags := Lags }} ->
+	    MaxLag = lists:max(Lags),
+	    AverageLag = lists:sum(Lags) / NumMessages,
+	    io:format("Done~nmaximum lag: ~p mcs~naverage lag: ~p mcs~n", [MaxLag, AverageLag])
+    end.
+
+do_produce_test_iter(_Pid, _Client, _Topic, _Partition, 0) ->
+    ok;
+do_produce_test_iter(Pid, Client, Topic, Partition, NumMessages) ->
+    Msg = generate_message(),
+    spawn_link(fun () ->
+		       {{ok, _}, Lag} = profile(fun () ->
+							kafka_cluster_client:produce(Client, ?DEFAULT_CLIENT_ID, Topic, Partition, Msg)
+						end),
+		       Pid ! {ok, Lag}
+	       end),
+    do_produce_test_iter(Pid, Client, Topic, Partition, NumMessages - 1).
+
+combine_test_results(MainPid, 0, Stats) ->
+    MainPid ! {test_complete, Stats};
+combine_test_results(MainPid, NumMessages, #{ lags := Lags } = Stats) ->
+    receive
+	{ok, Lag} ->
+	    combine_test_results(MainPid, NumMessages - 1, Stats#{ lags := [Lag | Lags]})
+    end.
+
+generate_message() ->
+    list_to_binary(lists:duplicate(?DEFAULT_MESSAGE_SIZE, $x)).
+
+profile(Fun) ->
+    BeginTs = os:timestamp(),
+    Result = Fun(),
+    EndTs = os:timestamp(),
+    {Result, timer:now_diff(EndTs, BeginTs)}.
+
+parse_args(Args) ->
+    parse_args(Args, #{ eprof => false }).
+
+parse_args([], Config) ->
+    Config;
+parse_args(["--broker-list", BrokerListArg | Args], Config) ->
+    parse_args(Args, Config#{ broker_list => parse_broker_list_arg(BrokerListArg)});
+parse_args(["--num-messages", NumMessagesArg | Args], Config) ->
+    parse_args(Args, Config#{ num_messages => list_to_integer(NumMessagesArg) });
+parse_args(["--topic", TopicArg | Args], Config) ->
+    parse_args(Args, Config#{ topic => list_to_binary(TopicArg) });
+parse_args(["--partition", PartitionArg | Args], Config) ->
+    parse_args(Args, Config#{ partition => list_to_integer(PartitionArg) });
+parse_args(["--eprof" | Args], Config) ->
+    parse_args(Args, Config#{ eprof := true });
+parse_args([UnknownArg | Args], Config) ->
+    io:format("Skipping unknown argument: ~p~n", [UnknownArg]),
+    parse_args(Args, Config).
+    
+parse_broker_list_arg(BrokerListArg) ->
+    Addresses = string:tokens(BrokerListArg, ","),
+    [parse_broker_address(Address) || Address <- Addresses].
+
+parse_broker_address(Address) ->
+    [HostnameStr, PortStr] = string:tokens(Address, ":"),
+    #broker_address{ host = list_to_binary(HostnameStr), port = list_to_integer(PortStr)}.
