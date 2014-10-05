@@ -10,17 +10,14 @@
 % supervisor callback
 -export([init/1]).
 
-start_link() ->
-    supervisor:start_link(?MODULE, []).
+start_link() -> supervisor:start_link(?MODULE, []).
 
 new_connection(Pid, Address) ->
     supervisor:start_child(Pid, [Address]).
 
 init([]) ->
-    {ok, {{simple_one_for_one, 1, 1}
-	 , [{ broker_connection
-	    , {broker_connection, start_link, []}
-	    , temporary
-	    , 5000
-	    , worker
-	    , [broker_connection] }]}}.
+    {ok,
+     {{simple_one_for_one, 1, 1},
+      [{kafka_broker_connection,
+	{kafka_broker_connection, start_link, []}, temporary,
+	5000, worker, [kafka_broker_connection]}]}}.
